@@ -157,7 +157,7 @@ async def create(
         client = get_client()
         workspace = get_workspace()
 
-        create_data = CreateProject(name=name)
+        create_data = CreateProject(name=name, identifier=(identifier or name[:3].upper()))
         if identifier:
             create_data.identifier = identifier.upper()
         if description:
