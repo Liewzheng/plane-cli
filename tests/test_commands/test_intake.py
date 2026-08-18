@@ -156,3 +156,70 @@ async def test_intake_ls_api_error_becomes_planecli_error(
         await list_(project="ABC")
     assert exc.value.exit_code == 4
     mock_output.assert_not_called()
+
+
+@patch("planecli.cache.invalidate_resource", new_callable=AsyncMock)
+@patch("planecli.commands.intake.output_single")
+@patch("planecli.commands.intake.run_sdk", new_callable=AsyncMock)
+@patch("planecli.commands.intake.resolve_project_async", new_callable=AsyncMock)
+@patch("planecli.commands.intake.get_workspace", return_value="ws")
+@patch("planecli.commands.intake.get_client")
+async def test_intake_create_builds_sdk_payload_and_invalidates(
+    mock_client, mock_ws, mock_resolve, mock_run_sdk, mock_output_single, mock_invalidate
+):
+    from plane.models.intake import CreateIntakeWorkItem
+
+    from planecli.commands.intake import INTAKE_FIELDS, create
+
+    mock_resolve.return_value = {"id": "p1", "identifier": "ABC"}
+    mock_run_sdk.return_value = _intake_model()
+
+    await create("Bug <b>&</b> report", project="ABC", description="a < b & c", priority="High")
+
+    args = mock_run_sdk.call_args[0]
+    assert args[0] is mock_client.return_value.intake.create
+    assert args[1:3] == ("ws", "p1")
+    payload = args[3]
+    assert isinstance(payload, CreateIntakeWorkItem)
+    assert payload.issue.name == "Bug <b>&</b> report"  # name is plain text, not escaped
+    assert payload.issue.priority == "high"
+    assert payload.issue.description_html == "<p>a &lt; b &amp; c</p>"
+    mock_invalidate.assert_awaited_once_with("work_items", "ws", "p1")
+    data, fields = mock_output_single.call_args[0]
+    assert fields is INTAKE_FIELDS
+    assert data["issue_id"] == "issue-1"
+
+
+@patch("planecli.cache.invalidate_resource", new_callable=AsyncMock)
+@patch("planecli.commands.intake.output_single")
+@patch("planecli.commands.intake.run_sdk", new_callable=AsyncMock)
+@patch("planecli.commands.intake.resolve_project_async", new_callable=AsyncMock)
+@patch("planecli.commands.intake.get_workspace", return_value="ws")
+@patch("planecli.commands.intake.get_client")
+async def test_intake_create_defaults_priority_none_and_no_description(
+    mock_client, mock_ws, mock_resolve, mock_run_sdk, mock_output_single, mock_invalidate
+):
+    from planecli.commands.intake import create
+
+    mock_resolve.return_value = {"id": "p1"}
+    mock_run_sdk.return_value = _intake_model()
+
+    await create("Plain", project="ABC")
+
+    payload = mock_run_sdk.call_args[0][3]
+    assert payload.issue.priority == "none"
+    assert payload.issue.description_html is None
+
+
+@patch("planecli.commands.intake.run_sdk", new_callable=AsyncMock)
+@patch("planecli.commands.intake.resolve_project_async", new_callable=AsyncMock)
+@patch("planecli.commands.intake.get_workspace", return_value="ws")
+@patch("planecli.commands.intake.get_client")
+async def test_intake_create_invalid_priority_fails_before_api_call(
+    mock_client, mock_ws, mock_resolve, mock_run_sdk
+):
+    from planecli.commands.intake import create
+
+    with pytest.raises(ValidationError):
+        await create("x", project="ABC", priority="urgnet")
+    mock_run_sdk.assert_not_awaited()

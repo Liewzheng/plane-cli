@@ -117,50 +117,50 @@ async def list_(
 async def create(
     name: str,
     *,
-    project: Annotated[str, Parameter(alias="-p")] = None,
+    project: Annotated[str, Parameter(alias="-p")],
     description: Annotated[str | None, Parameter(alias="-d")] = None,
     priority: Annotated[str | None, Parameter(alias="-P")] = None,
     json: bool = False,
 ) -> None:
-    """Create a new intake item in a project's intake queue.
+    """Create a new item in a project's intake queue.
 
     Parameters
     ----------
     name
-        Item title (required).
+        Item title.
     project
-        Project name, identifier, or UUID. Required.
+        Project name, identifier, or UUID.
     description
-        Item description. Automatically wrapped in <p> for HTML.
+        Item description (plain text; wrapped in <p> and HTML-escaped).
     priority
         Priority: none, low, medium, high, urgent. Default: none.
     """
-    import requests
+    from plane.models.intake import CreateIntakeWorkItem
+    from plane.models.work_items import WorkItemForIntakeRequest
 
     try:
+        normalized_priority = _normalize_priority(priority) if priority else "none"
+
         client = get_client()
         workspace = get_workspace()
         proj = await resolve_project_async(project, client, workspace)
+        project_id = proj["id"]
+
+        issue = WorkItemForIntakeRequest(name=name, priority=normalized_priority)
+        if description:
+            issue.description_html = f"<p>{html.escape(description)}</p>"
+
+        item = await run_sdk(
+            client.intake.create, workspace, project_id, CreateIntakeWorkItem(issue=issue)
+        )
+        data = _enrich_intake(item.model_dump())
+
+        from planecli.cache import invalidate_resource
+
+        await invalidate_resource("work_items", workspace, project_id)
     except PlaneError as e:
         raise handle_api_error(e)
 
-    if not proj.get("intake_view"):
-        from planecli.exceptions import ValidationError
-        raise ValidationError(
-            f"Project '{proj.get('name', project)}' does not have intake enabled."
-        )
-
-    issue = {"name": name, "priority": priority or "none"}
-    if description:
-        issue["description_html"] = f"<p>{description}</p>"
-
-    config = get_config()
-    url = _intake_url(config, workspace, proj["id"])
-    resp = requests.post(url, headers=_headers(config), json={"issue": issue}, timeout=30)
-    resp.raise_for_status()
-    body = resp.json()
-
-    data = _enrich_intake(body)
     output_single(data, INTAKE_FIELDS, title="Intake Item Created", as_json=json)
 
 
