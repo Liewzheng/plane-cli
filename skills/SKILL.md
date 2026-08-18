@@ -1,10 +1,10 @@
 ---
 name: planecli
-description: "Manage Plane.so project management via the planecli CLI — list, create, update, and search work items, projects, cycles/sprints, modules, labels, states, documents, and comments. ALWAYS use this skill when the user mentions Plane, Plane.so, planecli, or references work item identifiers like ABC-123, FE-234, MOB-45. Also invoke when the user asks to manage tasks, issues, sprints, backlogs, or project boards AND either explicitly mentions Plane or the project context indicates Plane is the tool in use. Do NOT use for other project management tools (Jira, Linear, Asana, Trello, Azure DevOps Boards)."
+description: "Manage Plane.so project management via the planecli CLI — list, create, update, and search work items, projects, cycles/sprints, modules, labels, states, documents, intake queues, and comments. ALWAYS use this skill when the user mentions Plane, Plane.so, planecli, or references work item identifiers like ABC-123, FE-234, MOB-45. Also invoke when the user asks to manage tasks, issues, sprints, backlogs, or project boards AND either explicitly mentions Plane or the project context indicates Plane is the tool in use. Do NOT use for other project management tools (Jira, Linear, Asana, Trello, Azure DevOps Boards)."
 allowed-tools: Bash(planecli *)
 metadata:
   author: Patrick Alves
-  version: "1.3"
+  version: "1.4"
 ---
 
 # PlaneCLI
@@ -78,6 +78,26 @@ planecli cycle remove-item "Sprint 1" ABC-123 -p "Project"
 planecli cycle items "Sprint 1" -p "Project" --json
 ```
 
+### Intake
+
+```bash
+# List the queue. The Issue ID column is what accept/decline/delete take (NOT the Intake ID)
+planecli intake ls -p "Project" --json
+
+# Create a queued item (priority: none, low, medium, high, urgent)
+planecli intake create "Login button broken" -p "Project" -d "Steps to reproduce..." -P high --json
+
+# Triage - requires the project Admin role
+planecli intake accept <issue-uuid> -p "Project" --json
+planecli intake decline <issue-uuid> -p "Project" --json
+
+# Destructive: for any status other than 'accepted' this also deletes the work item
+planecli intake delete <issue-uuid> -p "Project"
+
+# Is intake enabled for the project?
+planecli intake enabled "Project" --json
+```
+
 ### Modules, Labels, States, Documents, Comments
 
 ```bash
@@ -129,6 +149,9 @@ planecli comment create ABC-123 --body "Fixed in PR #456" --json
 - **Descriptions accept markdown.** The `-d` / `--description` flag (on `wi create` and `wi update`) is documented as "plain text", but Plane renders markdown — headers, `code fences`, lists, tables. For long or multiline bodies with code, write the content to a file and pass it with command substitution: `-d "$(cat body.md)"`. Building a huge inline string is error-prone; a file is more reliable. After a bulk create, verify one item with `wi show <ID> --json` to confirm the body rendered before creating the rest.
 - **`sequence_id` shape differs between commands.** `wi show`/`wi create` return it as an integer (`204`); `wi ls` returns it already prefixed as a string (`"PIPERAG-204"`). Don't re-prefix the list value (you'd get `PIPERAG-PIPERAG-204`). To build an identifier, use `sequence_id` directly from `wi ls`, or `"{project_identifier}-{sequence_id}"` from `wi show`.
 - **`wi show` bundles comments, and can degrade to `comments: null`.** `comments` is `[]` when there are none, a list when there are, or `null` if the comment fetch failed — the work item itself still returns and the command still exits 0 (a comment fetch failure never fails `wi show`). Check for `null` explicitly if your script needs to distinguish "no comments" from "couldn't load comments". Pass `--no-comments` to skip the fetch (then the `comments` key is absent from JSON entirely).
+- **Intake mutations take the work item UUID, not the intake ID.** `intake ls` returns both: `id` (the queue wrapper) and `issue_id` (the work item). `accept`, `decline`, and `delete` all take `issue_id` — passing the wrapper `id` fails.
+- **`intake accept` / `intake decline` need the project Admin role.** The API answers `200` with the record unchanged for lower roles; the CLI detects that and exits `4` with "the intake status was not changed". A `0` exit means the triage really happened.
+- **`intake delete` is not just a dequeue.** For any status other than `accepted` it permanently deletes the underlying work item too. There is no confirmation prompt and no undo — read the status from `intake ls` first, or use `intake decline` when you only want it out of the queue.
 
 ## Common Patterns
 

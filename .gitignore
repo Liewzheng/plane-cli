@@ -181,3 +181,4 @@ docs/superpowers/specs
 
 # Git worktrees (local scratch, never committed)
 .worktrees/
+docs/superpowers

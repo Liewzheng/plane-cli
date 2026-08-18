@@ -13,6 +13,7 @@ The main differentiator is **intelligent fuzzy search**: reference any resource 
 - **Labels**: Create and manage project labels with custom colors
 - **States**: Configure workflow states per project
 - **Documents**: Create, read, update, and delete project documents
+- **Intake**: Manage a project's intake queue — list, create, triage (accept/decline), and delete items
 - **Comments**: Add, update, and delete comments on work items
 - **Users**: List workspace members and identify the authenticated user
 - **Fuzzy Search**: Intelligent resource resolution — `--project "Front"` finds "Frontend"
@@ -223,6 +224,27 @@ planecli doc update "API Spec" --content "Updated content" -p "Frontend"
 planecli doc delete "API Spec" -p "Frontend"
 ```
 
+### Intake
+
+```bash
+# List a project's intake queue (Issue ID column is what accept/decline/delete take)
+planecli intake ls -p Frontend
+
+# Create an intake item
+planecli intake create "Login button broken" -p Frontend -d "Steps: ..." -P high
+
+# Triage by work item UUID (from the Issue ID column) - requires the project Admin role
+planecli intake accept  <issue-uuid> -p Frontend
+planecli intake decline <issue-uuid> -p Frontend
+
+# Careful: for any status other than 'accepted', delete also permanently removes
+# the underlying work item, not just the intake queue entry
+planecli intake delete  <issue-uuid> -p Frontend
+
+# Is intake enabled for a project?
+planecli intake enabled Frontend --json
+```
+
 ### Comments
 
 ```bash
@@ -273,6 +295,7 @@ planecli --no-cache wi ls -p "Frontend"
 | `planecli state` | `states` |
 | `planecli cycle` | `cycles` |
 | `planecli cache` | - |
+| `planecli intake` | - |
 | Subcommand `list` | `ls` |
 | Subcommand `show` | `read` |
 | Subcommand `create` | `new` |
@@ -412,6 +435,7 @@ src/planecli/
         comments.py      # Comment CRUD
         cycles.py        # Cycle CRUD + item management
         documents.py     # Document CRUD
+        intake.py        # Intake queue (list/create/accept/decline/delete/enabled)
         labels.py        # Label CRUD
         modules.py       # Module CRUD
         projects.py      # Project CRUD
