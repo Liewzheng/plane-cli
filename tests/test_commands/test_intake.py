@@ -311,3 +311,42 @@ async def test_intake_delete_by_issue_id_and_invalidates(
     )
     mock_invalidate.assert_awaited_once_with("work_items", "ws", "p1")
     assert "issue-1" in mock_console.print.call_args[0][0]
+
+
+@pytest.mark.parametrize(("intake_view", "expected"), [(True, True), (False, False), (None, False)])
+@patch("planecli.commands.intake.console")
+@patch("planecli.commands.intake.output_single")
+@patch("planecli.commands.intake.resolve_project_async", new_callable=AsyncMock)
+@patch("planecli.commands.intake.get_workspace", return_value="ws")
+@patch("planecli.commands.intake.get_client")
+async def test_intake_enabled_json_always_emits_a_bool(
+    mock_client, mock_ws, mock_resolve, mock_output_single, mock_console, intake_view, expected
+):
+    from planecli.commands.intake import enabled
+
+    mock_resolve.return_value = {"id": "p1", "name": "Frontend", "intake_view": intake_view}
+
+    await enabled("Frontend", json=True)
+
+    data = mock_output_single.call_args[0][0]
+    assert data == {"project": "Frontend", "project_id": "p1", "intake_enabled": expected}
+    assert mock_output_single.call_args[1]["as_json"] is True
+    mock_console.print.assert_not_called()
+
+
+@patch("planecli.commands.intake.console")
+@patch("planecli.commands.intake.output_single")
+@patch("planecli.commands.intake.resolve_project_async", new_callable=AsyncMock)
+@patch("planecli.commands.intake.get_workspace", return_value="ws")
+@patch("planecli.commands.intake.get_client")
+async def test_intake_enabled_table_mode_prints_human_message(
+    mock_client, mock_ws, mock_resolve, mock_output_single, mock_console
+):
+    from planecli.commands.intake import enabled
+
+    mock_resolve.return_value = {"id": "p1", "name": "Frontend", "intake_view": False}
+
+    await enabled("Frontend")
+
+    mock_output_single.assert_not_called()
+    assert "NOT enabled" in mock_console.print.call_args[0][0]

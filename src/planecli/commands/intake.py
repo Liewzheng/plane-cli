@@ -262,13 +262,20 @@ async def delete(
     console.print(f"[green]Intake item {issue_id} deleted.[/]")
 
 
+INTAKE_STATUS_FIELDS = [
+    ("project", "Project"),
+    ("project_id", "Project ID"),
+    ("intake_enabled", "Intake Enabled"),
+]
+
+
 @intake_app.command
 async def enabled(
     project: str,
     *,
     json: bool = False,
 ) -> None:
-    """Check if a project has intake enabled.
+    """Check whether a project has intake enabled.
 
     Parameters
     ----------
@@ -282,13 +289,15 @@ async def enabled(
     except PlaneError as e:
         raise handle_api_error(e)
 
-    intake_view = proj.get("intake_view", False)
+    is_enabled = bool(proj.get("intake_view"))
+    data = {
+        "project": proj.get("name", project),
+        "project_id": proj["id"],
+        "intake_enabled": is_enabled,
+    }
     if json:
-        import sys
-        sys.stdout.write(f'{{"intake_enabled": {str(intake_view).lower()}, "project_id": "{proj["id"]}"}}\n')
-    elif intake_view:
-        console.print(f"[green]Intake is enabled[/] for {proj.get('name', project)} (ID: {proj['id']})")
+        output_single(data, INTAKE_STATUS_FIELDS, title="Intake Status", as_json=True)
+    elif is_enabled:
+        console.print(f"[green]Intake is enabled[/] for {data['project']} (ID: {proj['id']})")
     else:
-        console.print(
-            f"[yellow]Intake is NOT enabled[/] for {proj.get('name', project)} (ID: {proj['id']})"
-        )
+        console.print(f"[yellow]Intake is NOT enabled[/] for {data['project']} (ID: {proj['id']})")
