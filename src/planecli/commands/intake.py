@@ -88,7 +88,7 @@ def _enrich_intake(data: dict) -> dict:
 @intake_app.command(name="list", alias="ls")
 async def list_(
     *,
-    project: Annotated[str, Parameter(alias="-p")] = None,
+    project: Annotated[str, Parameter(alias="-p")],
     json: bool = False,
 ) -> None:
     """List items in a project's intake queue.
@@ -96,31 +96,21 @@ async def list_(
     Parameters
     ----------
     project
-        Project name, identifier, or UUID. Required.
+        Project name, identifier, or UUID.
     """
-    import requests
-
     try:
         client = get_client()
         workspace = get_workspace()
         proj = await resolve_project_async(project, client, workspace)
+        project_id = proj["id"]
+
+        items = await paginate_all_async(client.intake.list, workspace, project_id)
     except PlaneError as e:
         raise handle_api_error(e)
 
-    if not proj.get("intake_view"):
-        console.print(
-            f"[yellow]Project '{proj.get('name', project)}' does not have intake enabled.[/]"
-        )
-        return
-
-    config = get_config()
-    url = _intake_url(config, workspace, proj["id"])
-    resp = requests.get(url, headers=_headers(config), timeout=30)
-    resp.raise_for_status()
-    body = resp.json()
-
-    results = [_enrich_intake(item) for item in body.get("results", [])]
-    output(results, INTAKE_COLUMNS, title=f"Intake Queue ({proj.get('identifier', '')})", as_json=json)
+    data = [_enrich_intake(item.model_dump()) for item in items]
+    title = f"Intake Queue ({proj.get('identifier', '')})"
+    output(data, INTAKE_COLUMNS, title=title, as_json=json)
 
 
 @intake_app.command(alias="new")
