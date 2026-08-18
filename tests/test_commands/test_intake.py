@@ -123,7 +123,7 @@ async def test_intake_ls_paginates_and_enriches(
 async def test_intake_ls_empty_queue_still_outputs_empty_list(
     mock_client, mock_ws, mock_resolve, mock_paginate, mock_output
 ):
-    """No client-side intake_view gate: an empty API result is rendered as [] (JSON), not skipped."""
+    """No client-side intake_view gate: an empty API result renders as [] (JSON), not skipped."""
     from planecli.commands.intake import list_
 
     mock_resolve.return_value = {"id": "p1", "identifier": "ABC", "intake_view": False}
@@ -211,17 +211,19 @@ async def test_intake_create_defaults_priority_none_and_no_description(
     assert payload.issue.description_html is None
 
 
+@pytest.mark.parametrize("priority", ["urgnet", "", "  ", "2"])
 @patch("planecli.commands.intake.run_sdk", new_callable=AsyncMock)
 @patch("planecli.commands.intake.resolve_project_async", new_callable=AsyncMock)
 @patch("planecli.commands.intake.get_workspace", return_value="ws")
 @patch("planecli.commands.intake.get_client")
 async def test_intake_create_invalid_priority_fails_before_api_call(
-    mock_client, mock_ws, mock_resolve, mock_run_sdk
+    mock_client, mock_ws, mock_resolve, mock_run_sdk, priority
 ):
+    """An explicit --priority always reaches the validator, empty string included."""
     from planecli.commands.intake import create
 
     with pytest.raises(ValidationError):
-        await create("x", project="ABC", priority="urgnet")
+        await create("x", project="ABC", priority=priority)
     mock_run_sdk.assert_not_awaited()
 
 
@@ -350,3 +352,45 @@ async def test_intake_enabled_table_mode_prints_human_message(
 
     mock_output_single.assert_not_called()
     assert "NOT enabled" in mock_console.print.call_args[0][0]
+
+
+@pytest.mark.parametrize("command_name", ["accept", "decline"])
+@patch("planecli.cache.invalidate_resource", new_callable=AsyncMock)
+@patch("planecli.commands.intake.output_single")
+@patch("planecli.commands.intake.run_sdk", new_callable=AsyncMock)
+@patch("planecli.commands.intake.resolve_project_async", new_callable=AsyncMock)
+@patch("planecli.commands.intake.get_workspace", return_value="ws")
+@patch("planecli.commands.intake.get_client")
+async def test_intake_triage_unchanged_status_is_an_error_not_a_success(
+    mock_client,
+    mock_ws,
+    mock_resolve,
+    mock_run_sdk,
+    mock_output_single,
+    mock_invalidate,
+    command_name,
+):
+    """A 200 with the status untouched (non-admin caller) must not be reported as success."""
+    from planecli.commands import intake
+    from planecli.exceptions import PlaneCLIError
+
+    mock_resolve.return_value = {"id": "p1"}
+    mock_run_sdk.return_value = _intake_model(status=-2)  # still pending
+
+    with pytest.raises(PlaneCLIError) as exc:
+        await getattr(intake, command_name)("issue-1", project="ABC")
+
+    assert exc.value.exit_code == 4
+    assert "pending" in exc.value.message
+    assert "Admin" in exc.value.message
+    mock_output_single.assert_not_called()
+    mock_invalidate.assert_not_awaited()
+
+
+def test_enrich_intake_does_not_mutate_its_argument() -> None:
+    original = {"issue": "issue-1", "status": -2, "issue_detail": {"name": "Bug"}}
+    enriched = _enrich_intake(original)
+
+    assert enriched["status"] == "pending"
+    assert original["status"] == -2  # caller's dict keeps the machine-readable code
+    assert "name" not in original

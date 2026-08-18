@@ -218,9 +218,12 @@ planecli intake ls -p Frontend
 # Create an intake item
 planecli intake create "Login button broken" -p Frontend -d "Steps: ..." -P high
 
-# Triage by work item UUID (from the Issue ID column)
+# Triage by work item UUID (from the Issue ID column) - requires the project Admin role
 planecli intake accept  <issue-uuid> -p Frontend
 planecli intake decline <issue-uuid> -p Frontend
+
+# Careful: for any status other than 'accepted', delete also permanently removes
+# the underlying work item, not just the intake queue entry
 planecli intake delete  <issue-uuid> -p Frontend
 
 # Is intake enabled for a project?

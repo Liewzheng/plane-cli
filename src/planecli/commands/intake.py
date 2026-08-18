@@ -6,8 +6,11 @@ Plane API notes:
 - ``accept``/``decline``/``delete`` take the *work item* UUID (the ``issue`` field of an
   intake item, shown as "Issue ID" by ``intake ls``), NOT the intake wrapper ``id``.
 - ``status`` is an integer: -2 pending, -1 rejected, 0 snoozed, 1 accepted, 2 duplicate.
-- Whether intake is enabled is decided by the API: ``ls`` returns an empty list and
-  mutations return HTTP 400 for projects without intake.
+- Whether intake is enabled is decided by the API, not by a client-side gate: ``ls``
+  returns an empty list whenever the project's intake view is off, and mutations return
+  HTTP 400 only for a project that never had intake enabled.
+- Triaging (``accept``/``decline``) requires the project **Admin** role: for lower roles
+  the API answers HTTP 200 with the record unchanged, so the returned status is checked.
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ from plane.errors import PlaneError
 
 from planecli.api.async_sdk import paginate_all_async, run_sdk
 from planecli.api.client import get_client, get_workspace, handle_api_error
-from planecli.exceptions import ValidationError
+from planecli.exceptions import APIError, ValidationError
 from planecli.formatters import console, output, output_single
 from planecli.utils.resolve import resolve_project_async
 
@@ -58,6 +61,13 @@ INTAKE_FIELDS = [
     ("updated_at", "Updated"),
 ]
 
+# Fields of the `enabled` command (project-level), not intake item statuses.
+INTAKE_ENABLED_FIELDS = [
+    ("project", "Project"),
+    ("project_id", "Project ID"),
+    ("intake_enabled", "Intake Enabled"),
+]
+
 
 def _normalize_priority(value: str) -> str:
     """Normalize and validate a priority. Raises ValidationError on invalid input."""
@@ -73,6 +83,7 @@ def _normalize_priority(value: str) -> str:
 
 def _enrich_intake(data: dict) -> dict:
     """Flatten an IntakeWorkItem dict for display: name/priority/issue_id + status label."""
+    data = {**data}
     issue = data.get("issue_detail") or {}
     data["name"] = issue.get("name") or ""
     data["priority"] = issue.get("priority") or "none"
@@ -131,7 +142,7 @@ async def create(
     project
         Project name, identifier, or UUID.
     description
-        Item description (plain text; wrapped in <p> and HTML-escaped).
+        Item description (plain text; wrapped in a paragraph tag and HTML-escaped).
     priority
         Priority: none, low, medium, high, urgent. Default: none.
     """
@@ -139,7 +150,7 @@ async def create(
     from plane.models.work_items import WorkItemForIntakeRequest
 
     try:
-        normalized_priority = _normalize_priority(priority) if priority else "none"
+        normalized_priority = _normalize_priority(priority) if priority is not None else "none"
 
         client = get_client()
         workspace = get_workspace()
@@ -181,7 +192,16 @@ async def _set_status(issue_id: str, project: str, status: int, title: str, json
             issue_id,
             UpdateIntakeWorkItem(status=status),
         )
-        data = _enrich_intake(item.model_dump())
+        raw = item.model_dump()
+        # The API answers HTTP 200 with the record untouched when the caller is not a
+        # project Admin, so a 200 alone is not proof the triage happened.
+        if raw.get("status") != status:
+            current = INTAKE_STATUS_LABELS.get(raw.get("status"), raw.get("status"))
+            raise APIError(
+                f"the intake status was not changed (still '{current}'). "
+                "Triaging intake items requires the project Admin role."
+            )
+        data = _enrich_intake(raw)
 
         from planecli.cache import invalidate_resource
 
@@ -200,6 +220,8 @@ async def accept(
     json: bool = False,
 ) -> None:
     """Accept (triage) an intake item, converting it into a regular work item.
+
+    Requires the project Admin role; other roles get an error instead of a silent no-op.
 
     Parameters
     ----------
@@ -220,6 +242,8 @@ async def decline(
 ) -> None:
     """Decline (reject) an intake item.
 
+    Requires the project Admin role; other roles get an error instead of a silent no-op.
+
     Parameters
     ----------
     issue_id
@@ -237,6 +261,9 @@ async def delete(
     project: Annotated[str, Parameter(alias="-p")],
 ) -> None:
     """Delete an intake item.
+
+    For any status other than 'accepted' this also permanently deletes the underlying
+    work item, not just the intake queue entry.
 
     Parameters
     ----------
@@ -261,12 +288,6 @@ async def delete(
 
     console.print(f"[green]Intake item {issue_id} deleted.[/]")
 
-
-INTAKE_STATUS_FIELDS = [
-    ("project", "Project"),
-    ("project_id", "Project ID"),
-    ("intake_enabled", "Intake Enabled"),
-]
 
 
 @intake_app.command
@@ -296,7 +317,7 @@ async def enabled(
         "intake_enabled": is_enabled,
     }
     if json:
-        output_single(data, INTAKE_STATUS_FIELDS, title="Intake Status", as_json=True)
+        output_single(data, INTAKE_ENABLED_FIELDS, title="Intake Status", as_json=True)
     elif is_enabled:
         console.print(f"[green]Intake is enabled[/] for {data['project']} (ID: {proj['id']})")
     else:
