@@ -231,33 +231,35 @@ async def decline(
 
 
 @intake_app.command
-async def delete(intake_id: str, *, project: Annotated[str, Parameter(alias="-p")] = None) -> None:
+async def delete(
+    issue_id: str,
+    *,
+    project: Annotated[str, Parameter(alias="-p")],
+) -> None:
     """Delete an intake item.
 
     Parameters
     ----------
-    intake_id
-        The issue_detail UUID (the actual issue ID, not the intake wrapper ID).
+    issue_id
+        Work item UUID — the "Issue ID" column of `intake ls` (not the intake wrapper ID).
     project
-        Project name, identifier, or UUID. Required.
+        Project name, identifier, or UUID.
     """
-    import requests
-
     try:
         client = get_client()
         workspace = get_workspace()
         proj = await resolve_project_async(project, client, workspace)
+        project_id = proj["id"]
+
+        await run_sdk(client.intake.delete, workspace, project_id, issue_id)
+
+        from planecli.cache import invalidate_resource
+
+        await invalidate_resource("work_items", workspace, project_id)
     except PlaneError as e:
         raise handle_api_error(e)
 
-    config = get_config()
-    url = (
-        f"{config.base_url}/api/v1/workspaces/{workspace}"
-        f"/projects/{proj['id']}/intake-issues/{intake_id}/"
-    )
-    resp = requests.delete(url, headers=_headers(config), timeout=30)
-    resp.raise_for_status()
-    console.print(f"[green]Intake item {intake_id} deleted.[/]")
+    console.print(f"[green]Intake item {issue_id} deleted.[/]")
 
 
 @intake_app.command

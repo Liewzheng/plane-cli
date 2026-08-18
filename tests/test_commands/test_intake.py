@@ -288,3 +288,26 @@ async def test_intake_accept_api_error_does_not_invalidate_or_print(
     assert exc.value.exit_code == 4
     mock_invalidate.assert_not_awaited()
     mock_output_single.assert_not_called()
+
+
+@patch("planecli.cache.invalidate_resource", new_callable=AsyncMock)
+@patch("planecli.commands.intake.console")
+@patch("planecli.commands.intake.run_sdk", new_callable=AsyncMock)
+@patch("planecli.commands.intake.resolve_project_async", new_callable=AsyncMock)
+@patch("planecli.commands.intake.get_workspace", return_value="ws")
+@patch("planecli.commands.intake.get_client")
+async def test_intake_delete_by_issue_id_and_invalidates(
+    mock_client, mock_ws, mock_resolve, mock_run_sdk, mock_console, mock_invalidate
+):
+    from planecli.commands.intake import delete
+
+    mock_resolve.return_value = {"id": "p1"}
+    mock_run_sdk.return_value = None
+
+    await delete("issue-1", project="ABC")
+
+    mock_run_sdk.assert_awaited_once_with(
+        mock_client.return_value.intake.delete, "ws", "p1", "issue-1"
+    )
+    mock_invalidate.assert_awaited_once_with("work_items", "ws", "p1")
+    assert "issue-1" in mock_console.print.call_args[0][0]
