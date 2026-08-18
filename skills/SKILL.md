@@ -1,32 +1,36 @@
 ---
 name: planecli
-description: "Manage Plane.so project management via the planecli CLI — list, create, update, and search work items, projects, cycles/sprints, modules, labels, states, documents, intake queues, and comments. ALWAYS use this skill when the user mentions Plane, Plane.so, planecli, or references work item identifiers like ABC-123, FE-234, MOB-45. Also invoke when the user asks to manage tasks, issues, sprints, backlogs, or project boards AND either explicitly mentions Plane or the project context indicates Plane is the tool in use. Do NOT use for other project management tools (Jira, Linear, Asana, Trello, Azure DevOps Boards)."
+description: "Manage Plane.so through the planecli CLI — work items, projects, cycles/sprints, modules, labels, states, documents, intake queue, comments. Use when the user mentions Plane, planecli, or a work-item identifier like ABC-123, or asks about tasks, sprints, or backlogs in a project where Plane is the tracker."
 allowed-tools: Bash(planecli *)
 metadata:
   author: Patrick Alves
-  version: "1.5"
+  version: "1.6"
 ---
 
 # PlaneCLI
 
-CLI for [Plane.so](https://plane.so) project management. Installed as `planecli`.
+CLI for [Plane.so](https://plane.so). Installed as `planecli`.
 
 ## Key Concepts
 
-- **Fuzzy resolution**: All resource arguments (projects, states, labels, users, work items) accept names, identifiers (e.g. `ABC-123`), or UUIDs. Fuzzy matching with 60% threshold finds close matches.
-- **"me" shortcut**: Pass `me` as the assignee value to reference the authenticated user.
-- **Output**: Always pass `--json` to get structured JSON output. JSON is the preferred output format.
-- **Caching**: Responses are cached on disk. Pass `--no-cache` to bypass or run `planecli cache clear` to reset.
-- **Project scoping**: Most commands require `-p PROJECT`. Work items with identifier format (ABC-123) auto-resolve across projects.
+- **Fuzzy resolution**: every resource argument (project, state, label, user, work item) accepts a name, an identifier (`ABC-123`), or a UUID; close names resolve.
+- **`me`**: the authenticated user, valid wherever an assignee is expected.
+- **`--json`**: pass it on every command; JSON goes to stdout, the human table to stderr.
+- **Caching**: reads are cached on disk. `--no-cache` bypasses it for one command; `planecli cache clear` resets it. Read back your own writes with `--no-cache`.
+- **Project scoping**: most commands take `-p PROJECT`. Identifiers (`ABC-123`) resolve across projects, and `wi ls` without `-p` spans all projects.
 
 ## Quick Reference
+
+Flags below are the common ones; every flag of every command is in
+[references/command-reference.md](references/command-reference.md) — read it before guessing a
+flag, filter, or sort key.
 
 ### Identity & Configuration
 
 ```bash
-planecli whoami --json          # Show authenticated user
-planecli configure                          # Interactive setup
-planecli users ls --json        # List workspace members
+planecli whoami --json          # authenticated user
+planecli configure              # interactive setup
+planecli users ls --json        # workspace members
 ```
 
 ### Work Items (most common)
@@ -35,28 +39,27 @@ planecli users ls --json        # List workspace members
 # List / filter
 planecli wi ls -p "Project" --state "In Progress" --assignee me --limit 10 --json
 planecli wi ls -p "Project" --labels "bug,critical" --sort updated --json
+planecli wi ls --assignee me --state "In Progress" --json      # across all projects
 
 # Create
 planecli wi create "Title" -p "Project" --assign me --priority urgent --state "Todo" --json
 planecli wi create "Sub-task" --parent ABC-123 --assign "Patrick" --labels "backend" --json
-
-# Create with description (-d / --description). The value is stored as HTML, NOT markdown
-# (see Gotchas). For long/multiline bodies, write HTML to a file and pipe it in:
-planecli wi create "Title" -p "Project" -d "<p>Short description.</p>" --json
-planecli wi create "Title" -p "Project" -d "$(cat /tmp/body.html)" --json   # long/rich body
+planecli wi create "Title" -p "Project" -d "<p>Body.</p>" --json   # -d is HTML — see Gotchas
 
 # Update
 planecli wi update ABC-123 --state "Done" --priority none --json
 planecli wi update ABC-123 --assign "Patrick" --labels "bug,urgent" --json
 
 # Other
-planecli wi show ABC-123 --json                     # Bundles comments (comments: [...] / [] / null)
-planecli wi show ABC-123 --no-comments --json        # Skip the comment fetch
-planecli wi assign ABC-123 --json                   # Assign to yourself
-planecli wi assign ABC-123 --assign "Name" --json   # Assign to someone
+planecli wi show ABC-123 --json                     # bundles comments (see Gotchas)
+planecli wi show ABC-123 --no-comments --json       # skip the comment fetch
+planecli wi assign ABC-123 --json                   # assign to yourself
+planecli wi assign ABC-123 --assign "Name" --json
 planecli wi search "login bug" -p "Project" --json
 planecli wi delete ABC-123
 ```
+
+Priority: `urgent`, `high`, `medium`, `low`, `none` (or `1`–`4`, `0`).
 
 ### Projects
 
@@ -80,22 +83,21 @@ planecli cycle items "Sprint 1" -p "Project" --json
 
 ### Intake
 
+`intake ls` returns two ids per row: `id` (the queue wrapper) and `issue_id` (the work item).
+`accept`, `decline`, and `delete` take `issue_id`.
+
 ```bash
-# List the queue. The Issue ID column is what accept/decline/delete take (NOT the Intake ID)
 planecli intake ls -p "Project" --json
+planecli intake enabled "Project" --json                        # is intake on for the project?
+planecli intake create "Login button broken" -p "Project" -d "Steps..." -P high --json
 
-# Create a queued item (priority: none, low, medium, high, urgent)
-planecli intake create "Login button broken" -p "Project" -d "Steps to reproduce..." -P high --json
+# Triage needs the project Admin role: exit 0 = triaged, exit 4 = the API left the record unchanged
+planecli intake accept <issue_id> -p "Project" --json
+planecli intake decline <issue_id> -p "Project" --json
 
-# Triage - requires the project Admin role
-planecli intake accept <issue-uuid> -p "Project" --json
-planecli intake decline <issue-uuid> -p "Project" --json
-
-# Destructive: for any status other than 'accepted' this also deletes the work item
-planecli intake delete <issue-uuid> -p "Project"
-
-# Is intake enabled for the project?
-planecli intake enabled "Project" --json
+# Destructive, no prompt, no undo: for any status other than `accepted` this also deletes the
+# work item. Read the status from `intake ls` first; `decline` merely removes it from the queue.
+planecli intake delete <issue_id> -p "Project"
 ```
 
 ### Modules, Labels, States, Documents, Comments
@@ -123,64 +125,39 @@ planecli comment ls ABC-123 --json
 planecli comment create ABC-123 --body "Fixed in PR #456" --json
 ```
 
-## Command Aliases
-
-| Full | Aliases |
-|---|---|
-| `work-item` | `wi`, `issues`, `issue` |
-| `project` | `projects` |
-| `document` | `doc`, `docs`, `documents` |
-| `comment` | `comments` |
-| `module` | `modules` |
-| `label` | `labels` |
-| `state` | `states` |
-| `cycle` | `cycles` |
-| `user` | `users` |
-| `list` | `ls` |
-| `show` | `read` |
-| `create` | `new` |
-
-## Priority Values
-
-`urgent` (1), `high` (2), `medium` (3), `low` (4), `none` (0). Accept names or numbers.
-
 ## Gotchas
 
-- **Descriptions are HTML, not markdown.** The `-d` / `--description` flag on `wi create` and `wi update` stores the value verbatim inside the Plane editor's HTML, without escaping it. Markdown is NOT converted: `## Title` and backticks render literally in the UI. Pass HTML instead — `<h2>`, `<p>`, `<ul>`, `<code>` and `<pre><code>` all survive. To reuse a markdown source, convert it first (any md-to-html converter) and pass `-d "$(cat body.html)"`; a file is far more reliable than a huge inline string. Plane prepends an empty `<p></p>` to the stored value, which is cosmetic. This applies to work items only: `intake create -d` HTML-escapes its input, so tags show up as text there.
-- **Verify the rendering on the FIRST item, before creating the rest.** `planecli wi show ABC-123 --no-cache --json | jq -r .description_html` must contain real tags (`<h2>`, `<pre>`) and not `##` or backticks. A non-empty description proves nothing — malformed input is stored happily.
-- **Never conclude "creation failed" from your own output pipeline.** `wi create` prints the created item as JSON, so a broken `jq` filter over that output looks exactly like a failed create. Confirm against the server before retrying: `planecli wi ls -p PROJECT --no-cache --json | jq -r '.[] | select(.parent=="<parent-uuid>") | .sequence_id'`. There is no idempotency key — retrying a create that actually succeeded silently duplicates the work item.
-- **`wi show` occasionally returns non-JSON.** In one 17-item verification sweep, 4 calls failed with `jq: parse error: Invalid numeric literal`; repeating the identical call succeeded every time. Treat it as transient and retry once before investigating.
-- **The `*_names` fields hold UUIDs, not names.** `assignee_names`, `label_names`, `label_detail_names` and `state_detail_name` from `wi show` return raw UUIDs despite what they are called. To check a bulk result, build lookup maps first with `label ls`, `state ls` and `users ls`, or read `priority` and `name` from `wi ls`, which are human-readable.
-- **`sequence_id` shape differs between commands.** `wi show`/`wi create` return it as an integer (`204`); `wi ls` returns it already prefixed as a string (`"PIPERAG-204"`). Don't re-prefix the list value (you'd get `PIPERAG-PIPERAG-204`). To build an identifier, use `sequence_id` directly from `wi ls`, or `"{project_identifier}-{sequence_id}"` from `wi show`.
-- **`wi show` bundles comments, and can degrade to `comments: null`.** `comments` is `[]` when there are none, a list when there are, or `null` if the comment fetch failed — the work item itself still returns and the command still exits 0 (a comment fetch failure never fails `wi show`). Check for `null` explicitly if your script needs to distinguish "no comments" from "couldn't load comments". Pass `--no-comments` to skip the fetch (then the `comments` key is absent from JSON entirely).
-- **Intake mutations take the work item UUID, not the intake ID.** `intake ls` returns both: `id` (the queue wrapper) and `issue_id` (the work item). `accept`, `decline`, and `delete` all take `issue_id` — passing the wrapper `id` fails.
-- **`intake accept` / `intake decline` need the project Admin role.** The API answers `200` with the record unchanged for lower roles; the CLI detects that and exits `4` with "the intake status was not changed". A `0` exit means the triage really happened.
-- **`intake delete` is not just a dequeue.** For any status other than `accepted` it permanently deletes the underlying work item too. There is no confirmation prompt and no undo — read the status from `intake ls` first, or use `intake decline` when you only want it out of the queue.
+- **Work-item descriptions are HTML.** `wi create` / `wi update -d` store the value verbatim inside
+  the Plane editor's HTML, so markdown renders literally (`##`, backticks). Pass `<h2>`, `<p>`,
+  `<ul>`, `<code>`, `<pre><code>`. From a markdown source, convert first and pass
+  `-d "$(cat body.html)"` — a file beats a huge inline string. Plane prepends a cosmetic empty
+  `<p></p>`. Verify the stored value: `wi show ABC-123 --no-cache --json | jq -r .description_html`
+  must contain real tags; a non-empty description proves nothing, since malformed input is stored
+  happily. Work items only: `intake create -d` HTML-escapes its input, so tags show up as text.
+- **Confirm a create against the server before retrying it.** `wi create` prints the created item
+  as JSON, so a broken `jq` filter over that output looks exactly like a failed create. Check with
+  `wi ls -p PROJECT --no-cache --json | jq -r '.[] | select(.parent=="<parent-uuid>") | .sequence_id'`.
+  There is no idempotency key — retrying a create that succeeded silently duplicates the item.
+- **`wi show` occasionally returns non-JSON** (`jq: parse error`). Transient — retry once before
+  investigating.
+- **`*_names` fields hold UUIDs.** `assignee_names`, `label_names`, `label_detail_names`, and
+  `state_detail_name` from `wi show` are raw UUIDs. Build lookup maps with `label ls`, `state ls`,
+  `users ls`, or read `priority` and `name` from `wi ls`, which are human-readable.
+- **`sequence_id` shape differs.** `wi show` / `wi create` return an integer (`204`); `wi ls`
+  returns the full identifier as a string (`"PIPERAG-204"`). Build identifiers as
+  `sequence_id` from `wi ls`, or `"{project_identifier}-{sequence_id}"` from `wi show`.
+- **`wi show` bundles comments and can degrade to `comments: null`.** `[]` = none, a list = some,
+  `null` = the comment fetch failed while the work item still returned and the command exited 0.
+  Check for `null` explicitly when "no comments" and "couldn't load comments" differ for you.
+  `--no-comments` omits the key entirely.
 
-## Common Patterns
+## Bulk create with rich descriptions
 
-```bash
-# Get my in-progress items across all projects
-planecli wi ls --assignee me --state "In Progress" --json
-
-# JSON output piped to jq
-planecli wi ls -p "Project" --json | jq '.[].name'
-
-# Create sub-issue under parent
-planecli wi create "Sub-task" --parent ABC-123 -p "Project" --json
-
-# Bulk check: list then update
-planecli wi ls -p "Project" --state "In Review" --json
-planecli wi update ABC-456 --state "Done" --json
-```
-
-### Bulk create with rich descriptions
-
-One file per item, convert to HTML, prove the first one renders, then create the rest and
-count what landed on the server.
+One file per item, convert to HTML, prove the first one renders, then create the rest and count
+what landed on the server.
 
 ```bash
-# 1. write one body per item (01.md, 02.md, ...) and convert them to HTML
+# 1. write one body per item (01.md, 02.md, ...) and convert to HTML
 npx marked -i 01.md -o 01.html          # or any md-to-html converter
 
 # 2. create the FIRST item and inspect its stored HTML before going further
@@ -192,7 +169,3 @@ planecli wi show ABC-2 --no-cache --json | jq -r .description_html   # expect <h
 planecli wi ls -p "Project" --no-cache --json \
   | jq -r '.[] | select(.parent=="<parent-uuid>") | "\(.sequence_id) \(.priority) \(.name)"'
 ```
-
-## Full Command Reference
-
-For complete flag details on every command, see [references/command-reference.md](references/command-reference.md).

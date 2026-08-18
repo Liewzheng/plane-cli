@@ -26,6 +26,23 @@
 
 Environment variable `PLANECLI_NO_CACHE=1` disables cache globally.
 
+### Command aliases
+
+| Full | Aliases |
+|---|---|
+| `work-item` | `wi`, `issues`, `issue` |
+| `project` | `projects` |
+| `document` | `doc`, `docs`, `documents` |
+| `comment` | `comments` |
+| `module` | `modules` |
+| `label` | `labels` |
+| `state` | `states` |
+| `cycle` | `cycles` |
+| `user` | `users` |
+| `list` | `ls` |
+| `show` | `read` |
+| `create` | `new` |
+
 ## Work Items
 
 Command group: `planecli wi` (aliases: `work-item`, `issues`, `issue`)
