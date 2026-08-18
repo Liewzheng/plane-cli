@@ -10,6 +10,7 @@
 - [States](#states)
 - [Documents](#documents)
 - [Comments](#comments)
+- [Intake](#intake)
 - [Users](#users)
 - [Cache](#cache)
 
@@ -275,6 +276,40 @@ planecli comment delete COMMENT_ID --issue ISSUE [--project/-p PROJECT]
 oldest → newest — not the first N chronologically. A limit of `0` or a negative
 value returns no comments (consistent with the `[:limit]` semantics used elsewhere,
 where `0` means "none").
+
+## Intake
+
+Command group: `planecli intake` (no alias)
+
+```
+planecli intake ls -p PROJECT
+planecli intake create NAME -p PROJECT [--description/-d TEXT] [--priority/-P PRIORITY]
+planecli intake accept ISSUE_ID -p PROJECT
+planecli intake decline ISSUE_ID -p PROJECT
+planecli intake delete ISSUE_ID -p PROJECT
+planecli intake enabled PROJECT
+```
+
+| Parameter | Description |
+|---|---|
+| `ISSUE_ID` | **Work item UUID** — the `Issue ID` column of `intake ls`, not the intake wrapper `Intake ID` |
+| `--project` / `-p` | Project name, identifier, or UUID (required on every subcommand except `enabled`, which takes the project as its argument) |
+| `--description` / `-d` | Item description, plain text (wrapped in a paragraph tag and HTML-escaped) |
+| `--priority` / `-P` | `none` (default), `low`, `medium`, `high`, `urgent` — an unknown value exits `5` |
+| `--json` | JSON output (all subcommands except `delete`) |
+
+Item `status` is reported as a label: `pending`, `rejected`, `snoozed`, `accepted`, `duplicate`.
+
+`accept` and `decline` **require the project Admin role**. Plane answers `HTTP 200` with the
+record unchanged for lower roles, so the CLI compares the returned status against the requested
+one and exits `4` ("the intake status was not changed") instead of reporting a false success.
+
+`delete` is destructive beyond the queue: for any status other than `accepted` it also
+**permanently deletes the underlying work item**. There is no confirmation prompt and no undo —
+use `decline` when the intent is only to reject the submission.
+
+`ls` returns an empty list when the project's intake view is off; `enabled` reports the same
+project flag (`intake_enabled`).
 
 ## Users
 

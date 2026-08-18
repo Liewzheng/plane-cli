@@ -1,6 +1,6 @@
 # PlaneCLI
 
-A Python CLI for [Plane.so](https://plane.so) (SaaS or self-hosted) that manages projects, work items, cycles, modules, documents, labels, states, and comments. Its defining feature is **fuzzy resource resolution**: any resource can be referenced by name, identifier (`ABC-123`), or UUID. Built with cyclopts, Rich, rapidfuzz, cashews, and the official `plane-sdk`.
+A Python CLI for [Plane.so](https://plane.so) (SaaS or self-hosted) that manages projects, work items, cycles, modules, documents, labels, states, intake queues, and comments. Its defining feature is **fuzzy resource resolution**: any resource can be referenced by name, identifier (`ABC-123`), or UUID. Built with cyclopts, Rich, rapidfuzz, cashews, and the official `plane-sdk`.
 
 ## Language
 
@@ -54,6 +54,10 @@ Request flow: **command → resolve → async SDK wrapper → (cache | Plane SDK
   - Work items: `WorkItemDetail` validation fails because the API returns `assignees`/`labels` as UUID strings. Resolvers use raw `client.work_items._get(path)` to get a dict directly. Each site has a `NOTE:` comment.
   - Documents (Pages): SDK support is incomplete; `commands/documents.py` calls the HTTP API directly with `requests` + `X-Api-Key` via `run_sdk(requests.get, ...)`.
   - Estimate points: no API endpoint; `cached_list_estimate_points` derives them from work items with `expand=estimate_point`.
+- **A `200` is not always a write.** Some Plane endpoints accept a mutation and ignore it — the intake `PATCH` returns `200` with the record unchanged when the caller is not a project Admin. Where that is known, read the raw response and compare the field you meant to change *before* enriching it for display, then raise `APIError`. See [ADR-0007](docs/adr/0007-verify-writes-the-api-can-silently-ignore.md).
+- **Intake mutations take the work item UUID**, not the intake wrapper `id` — the `Issue ID` column of `intake ls`. `intake delete` also deletes the underlying work item for any status other than `accepted`; destructive commands are documented, never prompted (see [ADR-0008](docs/adr/0008-destructive-deletes-are-documented-not-prompted.md)).
+- **Guard optional flags with `is not None`, not truthiness.** `--priority ""` must reach the validator and be rejected; `if priority:` would silently fall back to the default.
+- **Docstrings are `--help` text, so literal angle brackets vanish.** cyclopts/Rich renders them as markup — write "a paragraph tag", not `<p>`.
 - **Reference versioned docs, not tracker issues.** Do not cite Plane/Linear issue IDs or external tracker URLs in code comments — they are unreachable after delivery. Point to an ADR or guide instead.
 - **Tests never hit a real Plane instance.** `conftest.py` autouses a `mem://` cache backend and provides a `mock_plane_client` fixture. Mock the SDK/resolvers; prefer testing pure logic (normalizers, fuzzy matching, resolution) directly.
 

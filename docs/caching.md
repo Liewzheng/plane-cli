@@ -51,6 +51,7 @@ Comments are cached **per work item** (keyed by `item_id`, not just the project)
 |----------|--------|
 | Documents / Pages | Change frequently |
 | Individual resource lookups (by UUID/identifier) | Single-resource fetches should always be fresh |
+| Intake queue (`intake ls`) | Goes straight to the API (there is no `cached_list_intake`), so the queue always reflects the current state |
 
 **Important distinction**: What's cached is the *list of state definitions* — the lookup table that maps state UUIDs to display names and colors — not the association between a work item and its state. A work item's own fields are only ever as stale as its 2-minute TTL.
 
@@ -80,6 +81,8 @@ Write commands automatically invalidate the relevant cache entry:
 | `label create/update/delete` | Labels for that project |
 | `module create/update/delete` | Modules for that project |
 | `cycle create/update/delete` | Cycles for that project |
+| `wi create/update/delete` | Work item list for that project |
+| `intake create/accept/decline/delete` | Work item list for that project (an intake item wraps a work item) |
 | `comment create/update/delete` | Comments for that specific work item |
 | `configure` | Entire cache (credentials may have changed) |
 

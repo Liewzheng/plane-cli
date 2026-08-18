@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - `--no-comments` flag on `wi show` to skip the comment fetch (the `comments` key is then omitted from JSON)
 - `--limit` / `-l` option on `comment ls` (default 50): selects the most recent N comments, still rendered oldest → newest
 - Per-work-item comment cache (1-minute TTL), invalidated on `comment create`/`update`/`delete`
+- `planecli intake` command group: `ls`, `create`, `accept`, `decline`, `delete`, `enabled` for project intake queues. Mutations take the work item UUID shown in the `Issue ID` column of `intake ls`. `accept`/`decline` require the project Admin role (the API silently ignores the change for lower roles, so the CLI verifies it and fails loudly). `delete` also permanently deletes the underlying work item for any status other than `accepted`
 
 ## [0.5.1] - 2026-07-03
 
