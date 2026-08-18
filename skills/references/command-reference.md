@@ -84,7 +84,7 @@ planecli wi create TITLE [OPTIONS]
 | `--module` | Module name or UUID |
 | `--parent` | Parent work item identifier (ABC-123) for sub-issues |
 | `--estimate` / `-e` | Story point estimate |
-| `--description` / `-d` | Description (plain text) |
+| `--description` / `-d` | Description. Stored as raw HTML, not markdown — see the Gotchas in SKILL.md |
 | `--json` | JSON output |
 
 ### wi update
@@ -103,7 +103,7 @@ planecli wi update ISSUE [OPTIONS]
 | `--labels` | Comma-separated labels to set |
 | `--clear-labels` | Remove all labels |
 | `--name` | New title |
-| `--description` / `-d` | New description |
+| `--description` / `-d` | New description. Stored as raw HTML, not markdown |
 | `--json` | JSON output |
 
 ### wi delete
