@@ -29,6 +29,19 @@ Turning a reference into a concrete resource by trying UUID, then identifier, th
 name match. The verb is "resolve" (`resolve_work_item`, `resolve_project`). A failed name match
 yields "did you mean …?" suggestions.
 
+**Intake item**:
+A queued submission waiting for triage in a project's intake queue, exposed as the `intake`
+command group. It is a *wrapper* around a work item: the queue entry has its own `id` (shown as
+"Intake ID"), while every mutation — `accept`, `decline`, `delete` — is addressed by the
+**issue ID**, the UUID of the wrapped work item. Its `status` is one of `pending`, `rejected`,
+`snoozed`, `accepted`, `duplicate` (the API transports these as the integers -2, -1, 0, 1, 2).
+_Avoid_: inbox (Plane's older UI name for the same queue), triage queue, submission.
+
+**Issue ID**:
+The UUID of the work item wrapped by an intake item — the "Issue ID" column of `intake ls` and
+the argument every intake mutation takes. Deliberately distinct from the intake wrapper's own
+`id`; passing the wrapper `id` fails.
+
 **Comment**:
 An HTML note attached to a work item by an author. Fetched per work item, ordered oldest→newest.
 Its plain-text form (HTML stripped) is the `body_text`.

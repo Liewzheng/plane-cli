@@ -18,6 +18,10 @@ command  →  resolve  →  async SDK wrapper  →  (cache | Plane SDK)  →  fo
 4. **cache** (`cache.py`) — read-through disk cache for slowly-changing resource lists. See [ADR-0004](adr/0004-disk-cache-ttls-and-keys.md) and [caching.md](caching.md).
 5. **formatter** (`formatters/`) — renders a Rich table to **stderr** or JSON to **stdout**. See [ADR-0005](adr/0005-dual-output-contract.md).
 
+A mutation adds one step after the SDK call: the affected cache entry is invalidated. Where the
+API may answer `HTTP 200` without applying the write, the command also verifies the returned
+record before reporting success — see [ADR-0007](adr/0007-verify-writes-the-api-can-silently-ignore.md).
+
 ## Components
 
 **`app.py`** — the root cyclopts `App`. Registers every sub-app (`project_app`, `wi_app`, …) and defines `main()`, the entry point. `main()` strips the global `--verbose`/`-v` and `--no-cache` flags from `sys.argv` *before* cyclopts parses (cyclopts does not own these), configures logging and the cache, runs the app, and translates any `PlaneCLIError` into a formatted message plus exit code.
@@ -55,6 +59,11 @@ Major architecture decisions are documented as ADRs in [docs/adr/](adr/):
 - [ADR-0003](adr/0003-sdk-escape-hatches.md) — SDK escape hatches for API/model mismatches
 - [ADR-0004](adr/0004-disk-cache-ttls-and-keys.md) — Disk cache with volatility-based TTLs and instance-scoped keys
 - [ADR-0005](adr/0005-dual-output-contract.md) — Dual output contract (table → stderr, JSON → stdout)
+- [ADR-0006](adr/0006-secondary-enrichment-degrades-to-null.md) — Secondary enrichment degrades to a null sentinel (partial success)
+- [ADR-0007](adr/0007-verify-writes-the-api-can-silently-ignore.md) — Verify writes the API can silently ignore
+- [ADR-0008](adr/0008-destructive-deletes-are-documented-not-prompted.md) — Destructive deletes are documented, not prompted
+
+New decisions use [adr/template.md](adr/template.md) (MADR 4.0).
 
 ## External Dependencies
 
