@@ -164,76 +164,70 @@ async def create(
     output_single(data, INTAKE_FIELDS, title="Intake Item Created", as_json=json)
 
 
-@intake_app.command
-async def accept(
-    intake_id: str,
-    *,
-    project: Annotated[str, Parameter(alias="-p")] = None,
-) -> None:
-    """Accept (triage) an intake item, converting it to a regular work item.
-
-    Parameters
-    ----------
-    intake_id
-        Intake item ID (UUID). The issue_detail UUID also works.
-    project
-        Project name, identifier, or UUID. Required.
-    """
-    import requests
+async def _set_status(issue_id: str, project: str, status: int, title: str, json: bool) -> None:
+    """Shared body of accept/decline: PATCH the intake status of a work item."""
+    from plane.models.intake import UpdateIntakeWorkItem
 
     try:
         client = get_client()
         workspace = get_workspace()
         proj = await resolve_project_async(project, client, workspace)
+        project_id = proj["id"]
+
+        item = await run_sdk(
+            client.intake.update,
+            workspace,
+            project_id,
+            issue_id,
+            UpdateIntakeWorkItem(status=status),
+        )
+        data = _enrich_intake(item.model_dump())
+
+        from planecli.cache import invalidate_resource
+
+        await invalidate_resource("work_items", workspace, project_id)
     except PlaneError as e:
         raise handle_api_error(e)
 
-    config = get_config()
-    url = (
-        f"{config.base_url}/api/v1/workspaces/{workspace}"
-        f"/projects/{proj['id']}/intake-issues/{intake_id}/"
-    )
-    resp = requests.patch(
-        url, headers=_headers(config), json={"status": 1}, timeout=30
-    )
-    resp.raise_for_status()
-    console.print(f"[green]Intake item {intake_id} accepted.[/]")
+    output_single(data, INTAKE_FIELDS, title=title, as_json=json)
+
+
+@intake_app.command
+async def accept(
+    issue_id: str,
+    *,
+    project: Annotated[str, Parameter(alias="-p")],
+    json: bool = False,
+) -> None:
+    """Accept (triage) an intake item, converting it into a regular work item.
+
+    Parameters
+    ----------
+    issue_id
+        Work item UUID — the "Issue ID" column of `intake ls` (not the intake wrapper ID).
+    project
+        Project name, identifier, or UUID.
+    """
+    await _set_status(issue_id, project, 1, "Intake Item Accepted", json)
 
 
 @intake_app.command
 async def decline(
-    intake_id: str,
+    issue_id: str,
     *,
-    project: Annotated[str, Parameter(alias="-p")] = None,
+    project: Annotated[str, Parameter(alias="-p")],
+    json: bool = False,
 ) -> None:
-    """Decline an intake item.
+    """Decline (reject) an intake item.
 
     Parameters
     ----------
-    intake_id
-        Intake item ID (UUID). The issue_detail UUID also works.
+    issue_id
+        Work item UUID — the "Issue ID" column of `intake ls` (not the intake wrapper ID).
     project
-        Project name, identifier, or UUID. Required.
+        Project name, identifier, or UUID.
     """
-    import requests
-
-    try:
-        client = get_client()
-        workspace = get_workspace()
-        proj = await resolve_project_async(project, client, workspace)
-    except PlaneError as e:
-        raise handle_api_error(e)
-
-    config = get_config()
-    url = (
-        f"{config.base_url}/api/v1/workspaces/{workspace}"
-        f"/projects/{proj['id']}/intake-issues/{intake_id}/"
-    )
-    resp = requests.patch(
-        url, headers=_headers(config), json={"status": -1}, timeout=30
-    )
-    resp.raise_for_status()
-    console.print(f"[green]Intake item {intake_id} declined.[/]")
+    await _set_status(issue_id, project, -1, "Intake Item Declined", json)
 
 
 @intake_app.command

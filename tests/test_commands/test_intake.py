@@ -223,3 +223,68 @@ async def test_intake_create_invalid_priority_fails_before_api_call(
     with pytest.raises(ValidationError):
         await create("x", project="ABC", priority="urgnet")
     mock_run_sdk.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("command_name", "expected_status"),
+    [("accept", 1), ("decline", -1)],
+)
+@patch("planecli.cache.invalidate_resource", new_callable=AsyncMock)
+@patch("planecli.commands.intake.output_single")
+@patch("planecli.commands.intake.run_sdk", new_callable=AsyncMock)
+@patch("planecli.commands.intake.resolve_project_async", new_callable=AsyncMock)
+@patch("planecli.commands.intake.get_workspace", return_value="ws")
+@patch("planecli.commands.intake.get_client")
+async def test_intake_accept_decline_patch_status_by_issue_id(
+    mock_client,
+    mock_ws,
+    mock_resolve,
+    mock_run_sdk,
+    mock_output_single,
+    mock_invalidate,
+    command_name,
+    expected_status,
+):
+    from plane.models.intake import UpdateIntakeWorkItem
+
+    from planecli.commands import intake
+
+    command = getattr(intake, command_name)
+    mock_resolve.return_value = {"id": "p1"}
+    mock_run_sdk.return_value = _intake_model(status=expected_status)
+
+    await command("issue-1", project="ABC", json=True)
+
+    args = mock_run_sdk.call_args[0]
+    assert args[0] is mock_client.return_value.intake.update
+    assert args[1:4] == ("ws", "p1", "issue-1")
+    assert isinstance(args[4], UpdateIntakeWorkItem)
+    assert args[4].status == expected_status
+    mock_invalidate.assert_awaited_once_with("work_items", "ws", "p1")
+    data = mock_output_single.call_args[0][0]
+    assert data["status"] == ("accepted" if expected_status == 1 else "rejected")
+    assert mock_output_single.call_args[1]["as_json"] is True
+
+
+@patch("planecli.cache.invalidate_resource", new_callable=AsyncMock)
+@patch("planecli.commands.intake.output_single")
+@patch("planecli.commands.intake.run_sdk", new_callable=AsyncMock)
+@patch("planecli.commands.intake.resolve_project_async", new_callable=AsyncMock)
+@patch("planecli.commands.intake.get_workspace", return_value="ws")
+@patch("planecli.commands.intake.get_client")
+async def test_intake_accept_api_error_does_not_invalidate_or_print(
+    mock_client, mock_ws, mock_resolve, mock_run_sdk, mock_output_single, mock_invalidate
+):
+    from plane.errors import HttpError
+
+    from planecli.commands.intake import accept
+    from planecli.exceptions import PlaneCLIError
+
+    mock_resolve.return_value = {"id": "p1"}
+    mock_run_sdk.side_effect = HttpError("Not Found", 404)
+
+    with pytest.raises(PlaneCLIError) as exc:
+        await accept("bad-id", project="ABC")
+    assert exc.value.exit_code == 4
+    mock_invalidate.assert_not_awaited()
+    mock_output_single.assert_not_called()
